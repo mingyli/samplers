@@ -1,48 +1,46 @@
 use std::io::BufRead;
 
-use clap::{value_t, App, AppSettings, Arg, SubCommand};
-use rand::Rng;
-use rand_distr::{Distribution, Normal, StandardNormal};
+use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 
-fn gaussian(mean: f64, variance: f64) -> Result<impl Iterator<Item = f64>, failure::Error> {
-    let normal = Normal::new(mean, variance.sqrt())?;
-    Ok(normal.sample_iter(rand::thread_rng()))
+mod aggregates;
+mod distributions;
+
+fn gaussian(matches: &ArgMatches) -> Result<(), failure::Error> {
+    let n = clap::value_t!(matches, "num_samples", usize)?;
+    let mean = clap::value_t!(matches, "mean", f64)?;
+    let variance = clap::value_t!(matches, "variance", f64)?;
+    if mean == 0.0 && variance == 1.0 {
+        distributions::standard_gaussian()
+            .take(n)
+            .for_each(|v| println!("{}", v));
+    } else {
+        distributions::gaussian(mean, variance)?
+            .take(n)
+            .for_each(|v| println!("{}", v));
+    };
+    Ok(())
 }
 
-fn standard_gaussian() -> impl Iterator<Item = f64> {
-    rand::thread_rng().sample_iter(StandardNormal)
+fn mean(_matches: &ArgMatches) -> Result<(), failure::Error> {
+    println!(
+        "{}",
+        aggregates::mean(get_values_from_stdin(&mut std::io::stdin()))?
+    );
+    Ok(())
 }
 
-fn mean(
-    mut values: impl Iterator<Item = Result<f64, failure::Error>>,
-) -> Result<f64, failure::Error> {
-    let (_count, mean) = values
-        .try_fold::<_, _, Result<(u64, f64), failure::Error>>((0, 0.0), |(count, mean), r| {
-            Ok((count + 1, mean + (r? - mean) / (count as f64 + 1.0)))
-        })?;
-    Ok(mean)
-}
-
-fn variance(
-    mut values: impl Iterator<Item = Result<f64, failure::Error>>,
-) -> Result<(f64, f64), failure::Error> {
-    // An implementation of Welford's algorithm.
-    let (count, _mean, sum_square_difference_from_mean) =
-        values.try_fold::<_, _, Result<(u64, f64, f64), failure::Error>>(
-            (0, 0.0, 0.0),
-            |(mut count, mut mean, mut sum_square_difference_from_mean), r| {
-                let v = r?;
-                count += 1;
-                let delta1 = v - mean;
-                mean += delta1 / count as f64;
-                let delta2 = v - mean;
-                sum_square_difference_from_mean += delta1 * delta2;
-                Ok((count, mean, sum_square_difference_from_mean))
-            },
-        )?;
-    let population_variance = sum_square_difference_from_mean / count as f64;
-    let sample_variance = sum_square_difference_from_mean / (count as f64 - 1.0);
-    Ok((population_variance, sample_variance))
+fn variance(matches: &ArgMatches) -> Result<(), failure::Error> {
+    let (population_variance, sample_variance) =
+        aggregates::variance(get_values_from_stdin(&mut std::io::stdin()))?;
+    println!(
+        "{}",
+        match matches.value_of("type") {
+            Some("population") => population_variance,
+            Some("sample") => sample_variance,
+            _ => unreachable!(),
+        }
+    );
+    Ok(())
 }
 
 fn get_values_from_stdin(
@@ -105,34 +103,9 @@ fn main() -> Result<(), failure::Error> {
         .get_matches();
 
     match app_matches.subcommand() {
-        ("gaussian", Some(matches)) => {
-            let n = clap::value_t!(matches, "num_samples", usize)?;
-            let mean = clap::value_t!(matches, "mean", f64)?;
-            let variance = clap::value_t!(matches, "variance", f64)?;
-            if mean == 0.0 && variance == 1.0 {
-                standard_gaussian().take(n).for_each(|v| println!("{}", v));
-            } else {
-                gaussian(mean, variance)?
-                    .take(n)
-                    .for_each(|v| println!("{}", v));
-            };
-        }
-        ("mean", Some(_matches)) => {
-            println!("{}", mean(get_values_from_stdin(&mut std::io::stdin()))?);
-        }
-        ("variance", Some(matches)) => {
-            let (population_variance, sample_variance) =
-                variance(get_values_from_stdin(&mut std::io::stdin()))?;
-            println!(
-                "{}",
-                match matches.value_of("type") {
-                    Some("population") => population_variance,
-                    Some("sample") => sample_variance,
-                    _ => unreachable!(),
-                }
-            );
-        }
+        ("gaussian", Some(matches)) => gaussian(matches),
+        ("mean", Some(matches)) => mean(matches),
+        ("variance", Some(matches)) => variance(matches),
         _ => unreachable!(),
     }
-    Ok(())
 }
