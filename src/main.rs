@@ -127,12 +127,12 @@ fn main() -> Result<(), failure::Error> {
         .takes_value(true);
 
     let app_matches = App::new("samplers")
-        .author("mingyli")
         .about("Sample from distributions and calculate summary statistics from the command line.")
+        .set_term_width(0)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(
             SubCommand::with_name("gaussian")
-                .about("Sample from a normal distribution.")
+                .about("Sample from a normal distribution 𝓝（μ, σ²）")
                 .arg(num_experiments.clone())
                 .arg(
                     Arg::with_name("mean")
@@ -154,7 +154,7 @@ fn main() -> Result<(), failure::Error> {
         )
         .subcommand(
             SubCommand::with_name("poisson")
-                .about("Sample from a Poisson distribution.")
+                .about("Sample from a Poisson distribution Pois(λ)")
                 .arg(num_experiments.clone())
                 .arg(
                     Arg::with_name("lambda")
@@ -167,7 +167,7 @@ fn main() -> Result<(), failure::Error> {
         )
         .subcommand(
             SubCommand::with_name("exponential")
-                .about("Sample from a exponential distribution.")
+                .about("Sample from a exponential distribution Exp(λ)")
                 .arg(num_experiments.clone())
                 .arg(
                     Arg::with_name("lambda")
@@ -180,7 +180,7 @@ fn main() -> Result<(), failure::Error> {
         )
         .subcommand(
             SubCommand::with_name("uniform")
-                .about("Sample from a uniform distribution.")
+                .about("Sample from a uniform distribution Uniform(a, b)")
                 .after_help(
                     "A continuous uniform distribution is sampled \
                     over [lower, upper), while a discrete uniform distribution \
@@ -189,7 +189,7 @@ fn main() -> Result<(), failure::Error> {
                 .arg(num_experiments.clone())
                 .arg(
                     Arg::with_name("lower")
-                        .short("l")
+                        .short("a")
                         .long("lower")
                         .help("The lower bound of the uniform random variable.")
                         .default_value("0")
@@ -198,7 +198,7 @@ fn main() -> Result<(), failure::Error> {
                 )
                 .arg(
                     Arg::with_name("upper")
-                        .short("u")
+                        .short("b")
                         .long("upper")
                         .help("The upper bound of the uniform random variable.")
                         .default_value("1")
@@ -216,7 +216,7 @@ fn main() -> Result<(), failure::Error> {
         )
         .subcommand(
             SubCommand::with_name("binomial")
-                .about("Sample from a binomial distribution.")
+                .about("Sample from a binomial distribution Bin(n, p)")
                 .arg(num_experiments.clone())
                 .arg(
                     Arg::with_name("num_trials")
