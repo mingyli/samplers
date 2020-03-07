@@ -5,6 +5,11 @@ use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 mod aggregates;
 mod distributions;
 
+enum InputMethod {
+    Manual,
+    Piped,
+}
+
 fn gaussian(matches: &ArgMatches) -> Result<(), failure::Error> {
     let n = clap::value_t!(matches, "num_samples", usize)?;
     let mean = clap::value_t!(matches, "mean", f64)?;
@@ -21,17 +26,24 @@ fn gaussian(matches: &ArgMatches) -> Result<(), failure::Error> {
     Ok(())
 }
 
-fn mean(_matches: &ArgMatches) -> Result<(), failure::Error> {
-    println!(
-        "{}",
-        aggregates::mean(get_values_from_stdin(&mut std::io::stdin()))?
-    );
+fn mean(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure::Error> {
+    let mean = match input_method {
+        InputMethod::Manual => {
+            aggregates::mean_result(get_results_from_stdin(&mut std::io::stdin()))?
+        }
+        InputMethod::Piped => aggregates::mean(get_values_from_stdin(&mut std::io::stdin())?),
+    };
+    println!("{}", mean);
     Ok(())
 }
 
-fn variance(matches: &ArgMatches) -> Result<(), failure::Error> {
-    let (population_variance, sample_variance) =
-        aggregates::variance(get_values_from_stdin(&mut std::io::stdin()))?;
+fn variance(matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure::Error> {
+    let (population_variance, sample_variance) = match input_method {
+        InputMethod::Manual => {
+            aggregates::variance_result(get_results_from_stdin(&mut std::io::stdin()))?
+        }
+        InputMethod::Piped => aggregates::variance(get_values_from_stdin(&mut std::io::stdin())?),
+    };
     println!(
         "{}",
         match matches.value_of("type") {
@@ -44,6 +56,15 @@ fn variance(matches: &ArgMatches) -> Result<(), failure::Error> {
 }
 
 fn get_values_from_stdin(
+    stdin: &mut std::io::Stdin,
+) -> Result<impl Iterator<Item = f64>, failure::Error> {
+    let results = get_results_from_stdin(stdin);
+    results
+        .collect::<Result<Vec<f64>, failure::Error>>()
+        .map(|i| i.into_iter())
+}
+
+fn get_results_from_stdin(
     stdin: &mut std::io::Stdin,
 ) -> impl Iterator<Item = Result<f64, failure::Error>> + '_ {
     stdin.lock().lines().map(|line| Ok(line?.parse::<f64>()?))
@@ -102,10 +123,16 @@ fn main() -> Result<(), failure::Error> {
         )
         .get_matches();
 
+    let input_method = if atty::is(atty::Stream::Stdin) {
+        InputMethod::Manual
+    } else {
+        InputMethod::Piped
+    };
+
     match app_matches.subcommand() {
         ("gaussian", Some(matches)) => gaussian(matches),
-        ("mean", Some(matches)) => mean(matches),
-        ("variance", Some(matches)) => variance(matches),
+        ("mean", Some(matches)) => mean(matches, input_method),
+        ("variance", Some(matches)) => variance(matches, input_method),
         _ => unreachable!(),
     }
 }
