@@ -2,8 +2,8 @@ use std::io::BufRead;
 
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 
-mod aggregates;
 mod distributions;
+mod summary;
 
 enum InputMethod {
     Manual,
@@ -78,10 +78,8 @@ fn binomial(matches: &ArgMatches) -> Result<(), failure::Error> {
 
 fn mean(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure::Error> {
     let mean = match input_method {
-        InputMethod::Manual => {
-            aggregates::mean_result(get_results_from_stdin(&mut std::io::stdin()))?
-        }
-        InputMethod::Piped => aggregates::mean(get_values_from_stdin(&mut std::io::stdin())?),
+        InputMethod::Manual => summary::mean_result(get_results_from_stdin(&mut std::io::stdin()))?,
+        InputMethod::Piped => summary::mean(get_values_from_stdin(&mut std::io::stdin())?),
     };
     println!("{}", mean);
     Ok(())
@@ -90,9 +88,9 @@ fn mean(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure:
 fn variance(matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure::Error> {
     let (population_variance, sample_variance) = match input_method {
         InputMethod::Manual => {
-            aggregates::variance_result(get_results_from_stdin(&mut std::io::stdin()))?
+            summary::variance_result(get_results_from_stdin(&mut std::io::stdin()))?
         }
-        InputMethod::Piped => aggregates::variance(get_values_from_stdin(&mut std::io::stdin())?),
+        InputMethod::Piped => summary::variance(get_values_from_stdin(&mut std::io::stdin())?),
     };
     println!(
         "{}",
@@ -130,7 +128,7 @@ fn main() -> Result<(), failure::Error> {
 
     let app_matches = App::new("samplers")
         .author("mingyli")
-        .about("Sample from distributions and calculate aggregates from the command line.")
+        .about("Sample from distributions and calculate summary statistics from the command line.")
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(
             SubCommand::with_name("gaussian")
