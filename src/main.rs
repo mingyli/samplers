@@ -5,6 +5,8 @@ use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 mod distributions;
 mod summary;
 
+use summary::{DistributionSummary, Summary};
+
 enum InputMethod {
     Manual,
     Piped,
@@ -73,6 +75,22 @@ fn binomial(matches: &ArgMatches) -> Result<(), failure::Error> {
     distributions::binomial(num_trials, probability)?
         .take(num_experiments)
         .for_each(|v| println!("{}", v));
+    Ok(())
+}
+
+fn summarize(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure::Error> {
+    let mut summary = DistributionSummary::default();
+    match input_method {
+        InputMethod::Manual => {
+            for value in get_results_from_stdin(&mut std::io::stdin()) {
+                summary.observe(value?)?;
+            }
+        }
+        InputMethod::Piped => {
+            summary.observe_many(get_values_from_stdin(&mut std::io::stdin())?)?;
+        }
+    }
+    println!("{}", summary);
     Ok(())
 }
 
@@ -236,6 +254,11 @@ fn main() -> Result<(), failure::Error> {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("summarize")
+                .about("Calculate basic summary statistics.")
+                .after_help("This reads from stdin. You can terminate stdin with CTRL+D."),
+        )
+        .subcommand(
             SubCommand::with_name("mean")
                 .about("Calculate the mean of given values.")
                 .after_help("This reads from stdin. You can terminate stdin with CTRL+D."),
@@ -267,6 +290,7 @@ fn main() -> Result<(), failure::Error> {
         ("exponential", Some(matches)) => exponential(matches),
         ("uniform", Some(matches)) => uniform(matches),
         ("binomial", Some(matches)) => binomial(matches),
+        ("summarize", Some(matches)) => summarize(matches, input_method),
         ("mean", Some(matches)) => mean(matches, input_method),
         ("variance", Some(matches)) => variance(matches, input_method),
         _ => unreachable!(),
