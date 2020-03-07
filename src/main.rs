@@ -26,6 +26,46 @@ fn gaussian(matches: &ArgMatches) -> Result<(), failure::Error> {
     Ok(())
 }
 
+fn poisson(matches: &ArgMatches) -> Result<(), failure::Error> {
+    let num_experiments = clap::value_t!(matches, "num_experiments", usize)?;
+    let lambda = clap::value_t!(matches, "lambda", f64)?;
+    distributions::poisson(lambda)?
+        .take(num_experiments)
+        .for_each(|v| println!("{}", v));
+    Ok(())
+}
+
+fn exponential(matches: &ArgMatches) -> Result<(), failure::Error> {
+    let num_experiments = clap::value_t!(matches, "num_experiments", usize)?;
+    let lambda = clap::value_t!(matches, "lambda", f64)?;
+    distributions::exponential(lambda)?
+        .take(num_experiments)
+        .for_each(|v| println!("{}", v));
+    Ok(())
+}
+
+fn uniform(matches: &ArgMatches) -> Result<(), failure::Error> {
+    let num_experiments = clap::value_t!(matches, "num_experiments", usize)?;
+    match matches.value_of("type") {
+        Some("continuous") => {
+            let lower = clap::value_t!(matches, "lower", f64)?;
+            let upper = clap::value_t!(matches, "upper", f64)?;
+            distributions::continuous_uniform(lower, upper)
+                .take(num_experiments)
+                .for_each(|v| println!("{}", v));
+        }
+        Some("discrete") => {
+            let lower = clap::value_t!(matches, "lower", i64)?;
+            let upper = clap::value_t!(matches, "upper", i64)?;
+            distributions::discrete_uniform(lower, upper)
+                .take(num_experiments)
+                .for_each(|v| println!("{}", v));
+        }
+        _ => unreachable!(),
+    };
+    Ok(())
+}
+
 fn binomial(matches: &ArgMatches) -> Result<(), failure::Error> {
     let num_experiments = clap::value_t!(matches, "num_experiments", usize)?;
     let num_trials = clap::value_t!(matches, "num_trials", u64)?;
@@ -102,6 +142,7 @@ fn main() -> Result<(), failure::Error> {
                         .long("mean")
                         .help("The mean of the normal random variable, μ.")
                         .default_value("0.0")
+                        .allow_hyphen_values(true)
                         .takes_value(true),
                 )
                 .arg(
@@ -111,6 +152,68 @@ fn main() -> Result<(), failure::Error> {
                         .help("The variance of the normal random variable, σ².")
                         .default_value("1.0")
                         .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("poisson")
+                .about("Sample from a Poisson distribution.")
+                .arg(num_experiments.clone())
+                .arg(
+                    Arg::with_name("lambda")
+                        .short("l")
+                        .long("lambda")
+                        .help("The mean and variance of the Poisson random variable, λ.")
+                        .default_value("1.0")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("exponential")
+                .about("Sample from a exponential distribution.")
+                .arg(num_experiments.clone())
+                .arg(
+                    Arg::with_name("lambda")
+                        .short("l")
+                        .long("lambda")
+                        .help("The rate of the exponential random variable, λ.")
+                        .default_value("1.0")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("uniform")
+                .about("Sample from a uniform distribution.")
+                .after_help(
+                    "A continuous uniform distribution is sampled \
+                    over [lower, upper), while a discrete uniform distribution \
+                    is sampled over {lower, lower+1, ..., upper}.",
+                )
+                .arg(num_experiments.clone())
+                .arg(
+                    Arg::with_name("lower")
+                        .short("l")
+                        .long("lower")
+                        .help("The lower bound of the uniform random variable.")
+                        .default_value("0")
+                        .allow_hyphen_values(true)
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("upper")
+                        .short("u")
+                        .long("upper")
+                        .help("The upper bound of the uniform random variable.")
+                        .default_value("1")
+                        .allow_hyphen_values(true)
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("type")
+                        .short("t")
+                        .long("type")
+                        .help("Whether to use continous or discrete uniform distribution.")
+                        .possible_values(&["continuous", "discrete"])
+                        .default_value("continuous"),
                 ),
         )
         .subcommand(
@@ -162,6 +265,9 @@ fn main() -> Result<(), failure::Error> {
 
     match app_matches.subcommand() {
         ("gaussian", Some(matches)) => gaussian(matches),
+        ("poisson", Some(matches)) => poisson(matches),
+        ("exponential", Some(matches)) => exponential(matches),
+        ("uniform", Some(matches)) => uniform(matches),
         ("binomial", Some(matches)) => binomial(matches),
         ("mean", Some(matches)) => mean(matches, input_method),
         ("variance", Some(matches)) => variance(matches, input_method),

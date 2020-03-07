@@ -67,4 +67,6 @@ fn test_mean() {
 fn test_variance() {
     let values = [4.2, -0.8];
     assert_eq!(variance(values.iter().cloned()), (6.25, 12.5));
+    let values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    assert_eq!(variance(values.iter().cloned()), (105.0 / 36.0, 3.5));
 }
