@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate failure;
+
 use std::io::BufRead;
 
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
@@ -5,7 +8,15 @@ use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 mod distributions;
 mod summary;
 
-use summary::{DistributionSummary, Summary};
+use summary::{Bucket, DistributionSummary, Histogram, Measure};
+
+#[derive(Debug, Fail)]
+enum SamplersError {
+    #[fail(display = "Could not observe value: {}", value)]
+    CouldNotObserveValue { value: f64 },
+    #[fail(display = "Could not calculate summary statistic: {}", name)]
+    CouldNotCalculateSummaryStatistic { name: String },
+}
 
 enum InputMethod {
     Manual,
@@ -83,21 +94,104 @@ fn summarize(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), fai
     match input_method {
         InputMethod::Manual => {
             for value in get_results_from_stdin(&mut std::io::stdin()) {
-                summary.observe(value?)?;
+                summary.observe(&value?)?;
             }
         }
         InputMethod::Piped => {
-            summary.observe_many(get_values_from_stdin(&mut std::io::stdin())?)?;
+            summary.observe_many(get_values_from_stdin()?.iter())?;
         }
     }
     println!("{}", summary);
     Ok(())
 }
 
+fn render_fraction_bar(frac: f64) -> &'static str {
+    if frac > 7.0 / 8.0 {
+        "▉"
+    } else if frac > 6.0 / 8.0 {
+        "▊"
+    } else if frac > 5.0 / 8.0 {
+        "▋"
+    } else if frac > 4.0 / 8.0 {
+        "▌"
+    } else if frac > 3.0 / 8.0 {
+        "▍"
+    } else if frac > 2.0 / 8.0 {
+        "▎"
+    } else if frac > 1.0 / 8.0 {
+        "▏"
+    } else {
+        ""
+    }
+}
+
+fn histogram(matches: &ArgMatches) -> Result<(), failure::Error> {
+    let values: Vec<f64> = get_values_from_stdin()?;
+    let mut summary = DistributionSummary::default();
+    summary.observe_many(values.iter())?;
+    println!("{}", summary);
+
+    const PADDING: f64 = 0.05;
+    let num_buckets: usize = clap::value_t!(matches, "num_buckets", usize)?;
+    let max = summary
+        .max()
+        .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
+            name: "max".to_string(),
+        })?;
+    let min = summary
+        .min()
+        .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
+            name: "min".to_string(),
+        })?;
+    let width: f64 = max - min;
+    let bucket_width: f64 = (1.0 + PADDING + PADDING) * width / num_buckets as f64;
+    let boundaries: Vec<f64> = (0..num_buckets)
+        .map(|i| min - PADDING * width + (i as f64) * bucket_width)
+        .collect();
+    let mut histogram = Histogram::new(boundaries);
+    histogram.observe_many(values.iter())?;
+    let buckets = histogram.collect();
+
+    render_buckets(matches, &buckets)
+}
+
+fn render_buckets(matches: &ArgMatches, buckets: &[Bucket]) -> Result<(), failure::Error> {
+    use itertools::{Itertools, Position};
+
+    let max_count = buckets
+        .iter()
+        .map(|bucket| bucket.count())
+        .max()
+        .ok_or_else(|| format_err!("there are buckets"))?;
+    let display_size: usize = clap::value_t!(matches, "display_size", usize)?;
+
+    for elem in buckets.iter().with_position() {
+        let bucket = elem.into_inner();
+        let proportion: f64 = bucket.count() as f64 / max_count as f64;
+        let num_chars: f64 = display_size as f64 * proportion;
+        println!(
+            "{:>7.3} │{} {}",
+            bucket.lower(),
+            format!("{}{}", "█".repeat(num_chars.floor() as usize), {
+                render_fraction_bar(num_chars.fract())
+            }),
+            bucket.count(),
+        );
+        match elem {
+            Position::First(_) | Position::Middle(_) => {}
+            Position::Only(bucket) | Position::Last(bucket) => {
+                println!("{:>7.3} │ 0", bucket.upper());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn mean(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), failure::Error> {
     let mean = match input_method {
         InputMethod::Manual => summary::mean_result(get_results_from_stdin(&mut std::io::stdin()))?,
-        InputMethod::Piped => summary::mean(get_values_from_stdin(&mut std::io::stdin())?),
+        InputMethod::Piped => summary::mean(get_values_from_stdin()?.into_iter()),
     };
     println!("{}", mean);
     Ok(())
@@ -108,7 +202,7 @@ fn variance(matches: &ArgMatches, input_method: InputMethod) -> Result<(), failu
         InputMethod::Manual => {
             summary::variance_result(get_results_from_stdin(&mut std::io::stdin()))?
         }
-        InputMethod::Piped => summary::variance(get_values_from_stdin(&mut std::io::stdin())?),
+        InputMethod::Piped => summary::variance(get_values_from_stdin()?.into_iter()),
     };
     println!(
         "{}",
@@ -121,13 +215,10 @@ fn variance(matches: &ArgMatches, input_method: InputMethod) -> Result<(), failu
     Ok(())
 }
 
-fn get_values_from_stdin(
-    stdin: &mut std::io::Stdin,
-) -> Result<impl Iterator<Item = f64>, failure::Error> {
-    let results = get_results_from_stdin(stdin);
-    results
-        .collect::<Result<Vec<f64>, failure::Error>>()
-        .map(|i| i.into_iter())
+fn get_values_from_stdin() -> Result<Vec<f64>, failure::Error> {
+    let mut stdin = std::io::stdin();
+    let results = get_results_from_stdin(&mut stdin);
+    results.collect::<Result<Vec<f64>, failure::Error>>()
 }
 
 fn get_results_from_stdin(
@@ -259,6 +350,27 @@ fn main() -> Result<(), failure::Error> {
                 .after_help("This reads from stdin. You can terminate stdin with CTRL+D."),
         )
         .subcommand(
+            SubCommand::with_name("histogram")
+                .about("Displays a histogram of given values.")
+                .after_help("This reads from stdin. You can terminate stdin with CTRL+D.")
+                .arg(
+                    Arg::with_name("num_buckets")
+                        .short("b")
+                        .long("num_buckets")
+                        .help("The number of buckets in the histogram.")
+                        .default_value("15")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("display_size")
+                        .short("d")
+                        .long("display_size")
+                        .help("The size of the histogram in the terminal.")
+                        .default_value("80")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("mean")
                 .about("Calculate the mean of given values.")
                 .after_help("This reads from stdin. You can terminate stdin with CTRL+D."),
@@ -291,6 +403,7 @@ fn main() -> Result<(), failure::Error> {
         ("uniform", Some(matches)) => uniform(matches),
         ("binomial", Some(matches)) => binomial(matches),
         ("summarize", Some(matches)) => summarize(matches, input_method),
+        ("histogram", Some(matches)) => histogram(matches),
         ("mean", Some(matches)) => mean(matches, input_method),
         ("variance", Some(matches)) => variance(matches, input_method),
         _ => unreachable!(),
