@@ -3,7 +3,7 @@
 ```shell
 ▶ samplers
 samplers
-Sample from distributions and calculate summary statistics from the command line.
+Sample from common distributions and calculate summary statistics from the command line.
 
 USAGE:
     samplers <SUBCOMMAND>
@@ -14,7 +14,7 @@ FLAGS:
 
 SUBCOMMANDS:
     binomial       Sample from a binomial distribution Bin(n, p)
-    exponential    Sample from a exponential distribution Exp(λ)
+    exponential    Sample from an exponential distribution Exp(λ)
     gaussian       Sample from a normal distribution 𝓝（μ, σ²）
     help           Prints this message or the help of the given subcommand(s)
     histogram      Displays a histogram of given values.

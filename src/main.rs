@@ -230,7 +230,10 @@ fn main() -> Result<(), failure::Error> {
         .takes_value(true);
 
     let app_matches = App::new("samplers")
-        .about("Sample from distributions and calculate summary statistics from the command line.")
+        .about(
+            "Sample from common distributions and calculate summary statistics from the command \
+             line.",
+        )
         .set_term_width(0)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(
@@ -270,7 +273,7 @@ fn main() -> Result<(), failure::Error> {
         )
         .subcommand(
             SubCommand::with_name("exponential")
-                .about("Sample from a exponential distribution Exp(λ)")
+                .about("Sample from an exponential distribution Exp(λ)")
                 .arg(num_experiments.clone())
                 .arg(
                     Arg::with_name("lambda")
@@ -285,9 +288,8 @@ fn main() -> Result<(), failure::Error> {
             SubCommand::with_name("uniform")
                 .about("Sample from a uniform distribution Uniform(a, b)")
                 .after_help(
-                    "A continuous uniform distribution is sampled \
-                    over [lower, upper), while a discrete uniform distribution \
-                    is sampled over {lower, lower+1, ..., upper}.",
+                    "A continuous uniform distribution is sampled over [lower, upper), while a \
+                     discrete uniform distribution is sampled over {lower, lower+1, ..., upper}.",
                 )
                 .arg(num_experiments.clone())
                 .arg(

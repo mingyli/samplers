@@ -1,10 +1,13 @@
 [package]
 name = "samplers"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["ming li <mingyli34@gmail.com>"]
 description = "Sample from distributions and calculate summary statistics from the command line."
 license = "MIT"
 repository = "https://github.com/mingyli/samplers"
+documentation = "https://github.com/mingyli/samplers"
+homepage = "https://github.com/mingyli/samplers"
+readme = "README.md"
 edition = "2018"
 
 [dependencies]
