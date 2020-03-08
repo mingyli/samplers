@@ -2,9 +2,10 @@
 name = "samplers"
 version = "0.1.0"
 authors = ["ming li <mingyli34@gmail.com>"]
+description = "Sample from distributions and calculate summary statistics from the command line."
+license = "MIT"
+repository = "https://github.com/mingyli/samplers"
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 atty = "0.2.14"
