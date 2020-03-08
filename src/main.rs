@@ -27,15 +27,9 @@ fn gaussian(matches: &ArgMatches) -> Result<(), failure::Error> {
     let num_experiments = clap::value_t!(matches, "num_experiments", usize)?;
     let mean = clap::value_t!(matches, "mean", f64)?;
     let variance = clap::value_t!(matches, "variance", f64)?;
-    if mean == 0.0 && variance == 1.0 {
-        distributions::standard_gaussian()
-            .take(num_experiments)
-            .for_each(|v| println!("{}", v));
-    } else {
-        distributions::gaussian(mean, variance)?
-            .take(num_experiments)
-            .for_each(|v| println!("{}", v));
-    };
+    distributions::gaussian(mean, variance)?
+        .take(num_experiments)
+        .for_each(|v| println!("{}", v));
     Ok(())
 }
 
