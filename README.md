@@ -38,8 +38,8 @@ SUBCOMMANDS:
 ▶ samplers gaussian
 0.16913471218719806
 
-▶ samplers gaussian --mean -3.0 --variance 2.3
--3.997311502369134
+▶ samplers poisson --lambda 0.46
+3
 
 ▶ samplers gaussian -N 3
 -0.46374056557817844
@@ -91,7 +91,7 @@ Population kurtosis: 4.120852594453947
     inf │ 0
 ```
 
-### Chain `samplers` commands
+### Combine `samplers` commands
 
 ```shell
 ▶ samplers exponential -N 5000 | samplers histogram | samplers summarize
@@ -124,3 +124,35 @@ Population variance: 1.001226338775097
 Population standard deviation: 1.00061298151438
 Population skewness: 2.0402867138710232
 Population kurtosis: 9.19982782746453
+
+▶ ( samplers exponential -l 0.5 -N 500 & samplers gaussian -m -2.5 -N 500; ) | samplers histogram | samplers summarize
+   -inf │ 0
+ -6.129 │█▊ 5
+ -4.910 │██████████████████▌ 51
+ -3.691 │█████████████████████████████████████████████████████████████████████████████▊ 214
+ -2.472 │██████████████████████████████████████████████████████████████▏ 171
+ -1.253 │███████████████████▎ 53
+ -0.033 │████████████████████████████████████████████████████████████████████████████████ 220
+  1.186 │████████████████████████████████████████████████▎ 133
+  2.405 │████████████████████████ 66
+  3.624 │██████████████▉ 41
+  4.843 │███████▋ 21
+  6.063 │████ 11
+  7.282 │██▉ 8
+  8.501 │█ 3
+  9.720 │▋ 2
+ 10.939 │▎ 1
+    inf │ 0
+Count: 1000
+Minimum: -5.298192494925765
+Maximum: 11.327405812322485
+Mean: -0.2429294321045422
+Variance: 7.635620235863008
+Standard deviation: 2.7632626071119275
+Skewness: 0.7453924717583317
+Kurtosis: 3.4981671751521244
+Population variance: 7.6279846156271445
+Population standard deviation: 2.7618806302277337
+Population skewness: 0.7442739168540279
+Population kurtosis: 3.48968581796523
+```
