@@ -6,9 +6,11 @@ use std::io::BufRead;
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 
 mod distributions;
+mod histogram;
 mod summary;
 
-use summary::{Bucket, DistributionSummary, Histogram, Measure};
+use histogram::{Bucket, Histogram};
+use summary::{DistributionSummary, Observer};
 
 #[derive(Debug, Fail)]
 enum SamplersError {

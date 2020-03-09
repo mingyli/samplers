@@ -1,6 +1,6 @@
-use crate::SamplersError;
+use std::fmt;
 
-pub trait Measure<'a, T: 'a> {
+pub trait Observer<'a, T: 'a> {
     fn observe(&mut self, value: &T) -> Result<(), failure::Error>;
     fn observe_many(
         &mut self,
@@ -10,71 +10,145 @@ pub trait Measure<'a, T: 'a> {
     }
 }
 
+/// An implementation of online updates for central moments.
+///
+/// Functions prefixed with "population_" have no adjustment terms applied for
+/// bias; they are computed as if the observed values are the entire
+/// distribution. The other functions have adjustment terms applied for bias
+/// where applicable; these functions assume that the observed values are
+/// sampled from some distribution.
+///
+/// `momentp` is the pth order central moment scaled by n. It is the sum of
+/// deviations from the mean taken to the pth power:
+/// $ \sum_{i=1}^n (x_i - \bar{x})^p $.
 #[derive(Debug, Default)]
-pub struct DistributionSummary {
-    min: Option<f64>,
-    max: Option<f64>,
-    mean: Option<f64>,
+struct CentralMomentsSummary {
     count: u64,
-    sum_of_square_errors: Option<f64>,
+    mean: Option<f64>,
+    moment2: Option<f64>,
+    moment3: Option<f64>,
+    moment4: Option<f64>,
 }
 
-impl Measure<'_, f64> for DistributionSummary {
-    fn observe(&mut self, &value: &f64) -> Result<(), failure::Error> {
-        self.min = Some(self.min.map_or(value, |min| min.min(value)));
-        self.max = Some(self.max.map_or(value, |max| max.max(value)));
-        self.count += 1;
-        let delta1 = value - self.mean.unwrap_or_default();
-        self.mean = Some(self.mean.unwrap_or_default() + delta1 / (self.count as f64));
-        let delta2 = value - self.mean.unwrap_or_default();
-        self.sum_of_square_errors =
-            Some(self.sum_of_square_errors.unwrap_or_default() + delta1 * delta2);
-        Ok(())
+impl CentralMomentsSummary {
+    fn n(&self) -> f64 {
+        self.count as f64
     }
-}
 
-#[test]
-fn test_distribution_summary() -> Result<(), failure::Error> {
-    let mut summary = DistributionSummary::default();
-    assert_eq!(summary.mean(), None);
-    assert_eq!(summary.max(), None);
-    assert_eq!(summary.variance(), None);
-    assert_eq!(summary.sample_variance(), None);
-    assert_eq!(summary.count(), 0);
-    summary.observe(&8.25)?;
-    assert_eq!(summary.min(), Some(8.25));
-    assert_eq!(summary.max(), Some(8.25));
-    assert_eq!(summary.mean(), Some(8.25));
-    assert_eq!(summary.variance(), Some(0.0));
-    summary.observe(&-1.5)?;
-    assert_eq!(summary.min(), Some(-1.5));
-    assert_eq!(summary.max(), Some(8.25));
-    assert_eq!(summary.mean(), Some(3.375));
-    assert_eq!(summary.variance(), Some(23.765625));
-    assert_eq!(summary.sample_variance(), Some(47.53125));
+    pub fn count(&self) -> u64 {
+        self.count
+    }
 
-    let mut summary = DistributionSummary::default();
-    summary.observe_many([-1.25, 6.25, 16.0].iter())?;
-    assert_eq!(summary.mean(), Some(7.0));
-    assert_eq!(summary.variance(), Some(49.875));
-    assert_eq!(summary.sample_variance(), Some(74.8125));
-
-    Ok(())
-}
-
-impl DistributionSummary {
     pub fn mean(&self) -> Option<f64> {
         self.mean
     }
 
     pub fn variance(&self) -> Option<f64> {
-        Some(self.sum_of_square_errors? / self.count as f64)
+        Some(self.moment2? / (self.n() - 1.0))
     }
 
-    pub fn sample_variance(&self) -> Option<f64> {
-        Some(self.sum_of_square_errors? / (self.count as f64 - 1.0))
+    pub fn standard_deviation(&self) -> Option<f64> {
+        self.variance().map(f64::sqrt)
     }
 
+    pub fn skewness(&self) -> Option<f64> {
+        Some(
+            self.n() * (self.n() - 1.0).sqrt() * self.moment3?
+                / (self.n() - 2.0)
+                / self.moment2?.powf(1.5),
+        )
+    }
+
+    pub fn kurtosis(&self) -> Option<f64> {
+        Some(
+            (self.n() + 1.0) * self.n() * (self.n() - 1.0) / (self.n() - 2.0) / (self.n() - 3.0)
+                * self.moment4?
+                / self.moment2?.powi(2)
+                - 3.0 * (self.n() - 1.0).powi(2) / (self.n() - 2.0) / (self.n() - 3.0)
+                + 3.0,
+        )
+    }
+
+    pub fn population_variance(&self) -> Option<f64> {
+        Some(self.moment2? / self.n())
+    }
+
+    pub fn population_standard_deviation(&self) -> Option<f64> {
+        self.population_variance().map(f64::sqrt)
+    }
+
+    pub fn population_skewness(&self) -> Option<f64> {
+        Some((self.n()).sqrt() * self.moment3? / self.moment2?.powf(1.5))
+    }
+
+    pub fn population_kurtosis(&self) -> Option<f64> {
+        Some((self.n()) * self.moment4? / self.moment2?.powi(2))
+    }
+}
+
+impl Observer<'_, f64> for CentralMomentsSummary {
+    fn observe(&mut self, &value: &f64) -> Result<(), failure::Error> {
+        self.count += 1;
+        let delta = value - self.mean.unwrap_or_default();
+        let delta_n = delta / self.count as f64;
+        let delta2 = delta * delta;
+        let delta_n2 = delta_n * delta_n;
+        let mean = self.mean.get_or_insert(0.0);
+        let moment2 = self.moment2.get_or_insert(0.0);
+        let moment3 = self.moment3.get_or_insert(0.0);
+        let moment4 = self.moment4.get_or_insert(0.0);
+        *mean += delta_n;
+        *moment2 += delta * (delta - delta_n);
+        *moment3 += -3.0 * delta_n * *moment2 + delta * (delta2 - delta_n2);
+        *moment4 += -4.0 * delta_n * *moment3 - 6.0 * delta_n2 * *moment2
+            + delta * (delta * delta2 - delta_n * delta_n2);
+        Ok(())
+    }
+}
+
+#[test]
+fn test_central_moments_summary() -> Result<(), failure::Error> {
+    // Test the same behavior as Google Sheets and scipy.stats.kurtosis.
+    fn approx_eq(a: f64, b: f64) -> bool {
+        const THRESHOLD: f64 = 0.001;
+        (a - b).abs() < THRESHOLD
+    }
+
+    let mut summary = CentralMomentsSummary::default();
+    summary.observe_many([-1.25, 6.25, 16.0, -6.25, 1.25, 8.0].iter())?;
+    assert_eq!(summary.mean(), Some(4.0));
+    assert_eq!(summary.variance(), Some(61.05));
+    assert_eq!(summary.population_variance(), Some(50.875));
+    assert!(approx_eq(
+        summary.standard_deviation().unwrap(),
+        7.813449942
+    ));
+    assert!(approx_eq(
+        summary.population_standard_deviation().unwrap(),
+        7.132671309
+    ));
+    assert!(approx_eq(summary.skewness().unwrap(), 0.3528219643));
+    assert!(approx_eq(
+        summary.population_skewness().unwrap(),
+        0.2576647315
+    ));
+    println!("{:?}", summary.kurtosis());
+    println!("{:?}", summary);
+    assert!(approx_eq(summary.kurtosis().unwrap(), 2.92392));
+    println!("{:?}", summary.population_kurtosis());
+    assert!(approx_eq(summary.population_kurtosis().unwrap(), 2.11677));
+
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+pub struct DistributionSummary {
+    min: Option<f64>,
+    max: Option<f64>,
+    central_moments_summary: CentralMomentsSummary,
+}
+
+impl DistributionSummary {
     pub fn min(&self) -> Option<f64> {
         self.min
     }
@@ -84,124 +158,91 @@ impl DistributionSummary {
     }
 
     pub fn count(&self) -> u64 {
-        self.count
+        self.central_moments_summary.count()
+    }
+
+    pub fn mean(&self) -> Option<f64> {
+        self.central_moments_summary.mean()
+    }
+
+    pub fn variance(&self) -> Option<f64> {
+        self.central_moments_summary.variance()
+    }
+
+    pub fn standard_deviation(&self) -> Option<f64> {
+        self.central_moments_summary.standard_deviation()
+    }
+
+    pub fn skewness(&self) -> Option<f64> {
+        self.central_moments_summary.skewness()
+    }
+
+    pub fn kurtosis(&self) -> Option<f64> {
+        self.central_moments_summary.kurtosis()
+    }
+
+    pub fn population_variance(&self) -> Option<f64> {
+        self.central_moments_summary.population_variance()
+    }
+
+    pub fn population_standard_deviation(&self) -> Option<f64> {
+        self.central_moments_summary.population_standard_deviation()
+    }
+
+    pub fn population_skewness(&self) -> Option<f64> {
+        self.central_moments_summary.population_skewness()
+    }
+
+    pub fn population_kurtosis(&self) -> Option<f64> {
+        self.central_moments_summary.population_kurtosis()
     }
 }
 
-use std::fmt;
+impl Observer<'_, f64> for DistributionSummary {
+    fn observe(&mut self, &value: &f64) -> Result<(), failure::Error> {
+        self.min = Some(self.min.map_or(value, |min| min.min(value)));
+        self.max = Some(self.max.map_or(value, |max| max.max(value)));
+        self.central_moments_summary.observe(&value)?;
+        Ok(())
+    }
+}
+
 impl fmt::Display for DistributionSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Count: {}\nMinimum: {}\nMaximum: {}\nMean: {}\nVariance: {}\nSample variance: {}",
+            "Count: {}\nMinimum: {}\nMaximum: {}\nMean: {}\nVariance: {}\nStandard deviation: \
+             {}\nSkewness: {}\nKurtosis: {}\nPopulation variance: {}\nPopulation standard \
+             deviation: {}\nPopulation skewness: {}\nPopulation kurtosis: {}",
             self.count(),
             self.min().unwrap_or(std::f64::NAN),
             self.max().unwrap_or(std::f64::NAN),
             self.mean().unwrap_or(std::f64::NAN),
             self.variance().unwrap_or(std::f64::NAN),
-            self.sample_variance().unwrap_or(std::f64::NAN),
+            self.standard_deviation().unwrap_or(std::f64::NAN),
+            self.skewness().unwrap_or(std::f64::NAN),
+            self.kurtosis().unwrap_or(std::f64::NAN),
+            self.population_variance().unwrap_or(std::f64::NAN),
+            self.population_standard_deviation()
+                .unwrap_or(std::f64::NAN),
+            self.population_skewness().unwrap_or(std::f64::NAN),
+            self.population_kurtosis().unwrap_or(std::f64::NAN),
         )
     }
 }
 
-// A histogram with boundaries [-5.0, 0.0, 5.0] means its
-// buckets are (-inf, -5.0), [-5.0, 0.0), [0.0, 5.0), [5.0, inf).
-#[derive(Debug)]
-pub struct Histogram {
-    boundaries: Vec<f64>,
-    counts: Vec<u64>,
-}
-
-impl Histogram {
-    pub fn new(boundaries: Vec<f64>) -> Histogram {
-        // TODO: validate boundaries
-        Histogram {
-            counts: vec![0; boundaries.len() + 1],
-            boundaries,
-        }
-    }
-
-    pub fn collect(&self) -> Vec<Bucket> {
-        use itertools::Itertools;
-
-        std::iter::once(std::f64::NEG_INFINITY)
-            .chain(self.boundaries.iter().cloned())
-            .chain(std::iter::once(std::f64::INFINITY))
-            .tuple_windows::<(f64, f64)>()
-            .zip(self.counts.iter())
-            .map(|((lower, upper), &count)| Bucket {
-                lower,
-                upper,
-                count,
-            })
-            .collect()
-    }
-}
-
-impl Measure<'_, f64> for Histogram {
-    fn observe(&mut self, &value: &f64) -> Result<(), failure::Error> {
-        let mut it = self
-            .boundaries
-            .iter()
-            .enumerate()
-            .filter(|(_index, &boundary)| value < boundary);
-        if let Some((index, _boundary)) = it.next() {
-            if let Some(count) = self.counts.get_mut(index) {
-                *count += 1;
-            } else {
-                return Err(SamplersError::CouldNotObserveValue { value }.into());
-            }
-        } else if let Some(last) = self.counts.last_mut() {
-            *last += 1;
-        } else {
-            return Err(SamplersError::CouldNotObserveValue { value }.into());
-        }
-        Ok(())
-    }
-}
-
 #[test]
-fn test_histogram() -> Result<(), failure::Error> {
-    let mut histogram = Histogram::new(vec![-5.0, 0.0, 5.0]);
-    assert_eq!(histogram.counts, vec![0, 0, 0, 0]);
-    histogram.observe(&1.0)?;
-    assert_eq!(histogram.counts, vec![0, 0, 1, 0]);
-    histogram.observe(&1.0)?;
-    assert_eq!(histogram.counts, vec![0, 0, 2, 0]);
-    histogram.observe(&-1.0)?;
-    assert_eq!(histogram.counts, vec![0, 1, 2, 0]);
-    histogram.observe(&-6.0)?;
-    assert_eq!(histogram.counts, vec![1, 1, 2, 0]);
-    histogram.observe_many([-20.0, 120.0, 2.0].iter())?;
-    assert_eq!(histogram.counts, vec![2, 1, 3, 1]);
-
-    let mut histogram = Histogram::new(vec![0.0]);
-    assert_eq!(histogram.counts, vec![0, 0]);
-    histogram.observe_many([-20.0, 120.0, 2.0].iter())?;
-    assert_eq!(histogram.counts, vec![1, 2]);
-
+fn test_distribution_summary() -> Result<(), failure::Error> {
+    let mut summary = DistributionSummary::default();
+    assert_eq!(summary.mean(), None);
+    assert_eq!(summary.max(), None);
+    summary.observe(&8.25)?;
+    assert_eq!(summary.min(), Some(8.25));
+    assert_eq!(summary.max(), Some(8.25));
+    summary.observe(&-1.5)?;
+    assert_eq!(summary.min(), Some(-1.5));
+    assert_eq!(summary.max(), Some(8.25));
     Ok(())
-}
-
-#[derive(Debug, Default)]
-pub struct Bucket {
-    lower: f64,
-    upper: f64,
-    count: u64,
-}
-
-impl Bucket {
-    pub fn lower(&self) -> f64 {
-        self.lower
-    }
-
-    pub fn upper(&self) -> f64 {
-        self.upper
-    }
-
-    pub fn count(&self) -> u64 {
-        self.count
-    }
 }
 
 pub fn mean(values: impl Iterator<Item = f64>) -> f64 {
