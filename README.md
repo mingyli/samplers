@@ -1,5 +1,10 @@
 # samplers
 
+[![Crates.io](https://img.shields.io/crates/v/samplers.svg)](https://crates.io/crates/samplers)
+
+`samplers` allows you to sample from common distributions and calculate
+summary statistics from the command line.
+
 ```shell
 ▶ samplers
 samplers
@@ -27,6 +32,8 @@ SUBCOMMANDS:
 
 ## Usage
 
+### Sample from distributions
+
 ```shell
 ▶ samplers gaussian
 0.16913471218719806
@@ -38,7 +45,11 @@ SUBCOMMANDS:
 -0.46374056557817844
 0.11965098764754963
 0.0708432388236347
+```
 
+### Calculate summary statistics
+
+```shell
 ▶ samplers gaussian -N 500 | samplers variance
 0.9902143982448738
 
@@ -55,7 +66,11 @@ Population variance: 0.7927359999999999
 Population standard deviation: 0.8903572316772633
 Population skewness: 1.1329633346739394
 Population kurtosis: 4.120852594453947
+```
 
+### Generate histograms
+
+```shell
 ▶ samplers gaussian -N 5000 | samplers histogram
    -inf │ 0
  -4.308 │ 1
@@ -74,7 +89,11 @@ Population kurtosis: 4.120852594453947
   2.952 │▋ 9
   3.510 │▏ 2
     inf │ 0
+```
 
+### Chain `samplers` commands
+
+```shell
 ▶ samplers exponential -N 5000 | samplers histogram | samplers summarize
    -inf │ 0
  -0.500 │███████████████████████████████████████████ 1102
