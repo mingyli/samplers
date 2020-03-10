@@ -26,7 +26,7 @@ enum InputMethod {
     Piped,
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 enum OutputMethod {
     Console,
     Piped,
@@ -109,36 +109,54 @@ fn summarize(_matches: &ArgMatches, input_method: InputMethod) -> Result<(), fai
 }
 
 fn histogram(matches: &ArgMatches, output_method: OutputMethod) -> Result<(), failure::Error> {
-    let values: Vec<f64> = get_values_from_stdin()?;
-    let mut summary = DistributionSummary::default();
-    summary.observe_many(values.iter())?;
-
     let num_buckets: usize = clap::value_t!(matches, "num-buckets", usize)?;
-    let min = clap::value_t!(matches, "min", f64)
-        .ok()
-        .or_else(|| summary.min())
-        .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
-            name: "min".to_string(),
-        })?;
-    let max = clap::value_t!(matches, "max", f64)
-        .ok()
-        .or_else(|| summary.max())
-        .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
-            name: "max".to_string(),
-        })?;
-    let boundaries = histogram::linspace(min, max, num_buckets);
-    let mut histogram = Histogram::with_boundaries(boundaries);
-    histogram.observe_many(values.iter())?;
-    let buckets = histogram.collect();
-
     let display_size: usize = clap::value_t!(matches, "display-size", usize)?;
+    let histogram = match (
+        clap::value_t!(matches, "min", f64),
+        clap::value_t!(matches, "max", f64),
+    ) {
+        (Ok(min), Ok(max)) => {
+            // Compute histogram in a single pass.
+            let mut histogram = Histogram::with_bounds(min, max, num_buckets);
+            get_results_from_stdin(&mut std::io::stdin()).try_for_each(|result| {
+                let value = result?;
+                if output_method == OutputMethod::Piped {
+                    println!("{}", value);
+                }
+                histogram.observe(&value)
+            })?;
+            histogram
+        }
+        (min_result, max_result) => {
+            let values: Vec<f64> = get_values_from_stdin()?;
+            if output_method == OutputMethod::Piped {
+                values.iter().for_each(|value| println!("{}", value));
+            }
+            let mut summary = DistributionSummary::default();
+            summary.observe_many(values.iter())?;
+            let min = min_result.or_else(|_| {
+                summary
+                    .min()
+                    .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
+                        name: "min".to_string(),
+                    })
+            })?;
+            let max = max_result.or_else(|_| {
+                summary
+                    .max()
+                    .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
+                        name: "max".to_string(),
+                    })
+            })?;
+            let mut histogram = Histogram::with_bounds(min, max, num_buckets);
+            histogram.observe_many(values.iter())?;
+            histogram
+        }
+    };
+    let buckets = histogram.collect();
     match output_method {
         OutputMethod::Console => render::render_buckets(&buckets, display_size, std::io::stdout()),
-        OutputMethod::Piped => {
-            render::render_buckets(&buckets, display_size, std::io::stderr())?;
-            values.iter().for_each(|value| println!("{}", value));
-            Ok(())
-        }
+        OutputMethod::Piped => render::render_buckets(&buckets, display_size, std::io::stderr()),
     }
 }
 
@@ -317,12 +335,14 @@ fn main() -> Result<(), failure::Error> {
                     Arg::with_name("min")
                         .long("min")
                         .help("The lowest boundary in the histogram.")
+                        .allow_hyphen_values(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("max")
                         .long("max")
                         .help("The highest boundary in the histogram.")
+                        .allow_hyphen_values(true)
                         .takes_value(true),
                 )
                 .arg(

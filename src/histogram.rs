@@ -1,7 +1,7 @@
 use crate::summary::Observer;
 use crate::SamplersError;
 
-pub fn linspace(min: f64, max: f64, num: usize) -> Vec<f64> {
+fn linspace(min: f64, max: f64, num: usize) -> Vec<f64> {
     let range: f64 = max - min;
     let width: f64 = range / num as f64;
     (0..num)
@@ -25,6 +25,10 @@ pub struct Histogram {
 }
 
 impl Histogram {
+    pub fn with_bounds(min: f64, max: f64, num: usize) -> Histogram {
+        Histogram::with_boundaries(linspace(min, max, num))
+    }
+
     pub fn with_boundaries(boundaries: Vec<f64>) -> Histogram {
         // TODO: validate boundaries
         Histogram {
