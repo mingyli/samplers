@@ -113,24 +113,21 @@ fn histogram(matches: &ArgMatches, output_method: OutputMethod) -> Result<(), fa
     let mut summary = DistributionSummary::default();
     summary.observe_many(values.iter())?;
 
-    const PADDING: f64 = 0.05;
     let num_buckets: usize = clap::value_t!(matches, "num-buckets", usize)?;
-    let max = summary
-        .max()
-        .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
-            name: "max".to_string(),
-        })?;
-    let min = summary
-        .min()
+    let min = clap::value_t!(matches, "min", f64)
+        .ok()
+        .or_else(|| summary.min())
         .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
             name: "min".to_string(),
         })?;
-    let width: f64 = max - min;
-    let bucket_width: f64 = (1.0 + PADDING + PADDING) * width / num_buckets as f64;
-    let boundaries: Vec<f64> = (0..num_buckets)
-        .map(|i| min - PADDING * width + (i as f64) * bucket_width)
-        .collect();
-    let mut histogram = Histogram::new(boundaries);
+    let max = clap::value_t!(matches, "max", f64)
+        .ok()
+        .or_else(|| summary.max())
+        .ok_or_else(|| SamplersError::CouldNotCalculateSummaryStatistic {
+            name: "max".to_string(),
+        })?;
+    let boundaries = histogram::linspace(min, max, num_buckets);
+    let mut histogram = Histogram::with_boundaries(boundaries);
     histogram.observe_many(values.iter())?;
     let buckets = histogram.collect();
 
@@ -315,6 +312,18 @@ fn main() -> Result<(), failure::Error> {
                     "This reads from stdin. You can terminate stdin with CTRL+D.\nIf this output \
                      is being piped, it will duplicate its input to stdout and print the \
                      histogram to stderr instead.",
+                )
+                .arg(
+                    Arg::with_name("min")
+                        .long("min")
+                        .help("The lowest boundary in the histogram.")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("max")
+                        .long("max")
+                        .help("The highest boundary in the histogram.")
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("num-buckets")
