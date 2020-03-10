@@ -212,6 +212,7 @@ fn main() -> Result<(), failure::Error> {
             "Sample from common distributions and calculate summary statistics from the command \
              line.",
         )
+        .version("0.1.3")
         .set_term_width(0)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(
@@ -321,7 +322,11 @@ fn main() -> Result<(), failure::Error> {
         .subcommand(
             SubCommand::with_name("summarize")
                 .about("Calculate basic summary statistics.")
-                .after_help("This reads from stdin. You can terminate stdin with CTRL+D."),
+                .after_help(
+                    "This reads from stdin. You can terminate stdin with CTRL+D.\nBy default, \
+                     this command computes summary statistics in a single pass with a constant \
+                     amount of additional memory.",
+                ),
         )
         .subcommand(
             SubCommand::with_name("histogram")
@@ -329,7 +334,9 @@ fn main() -> Result<(), failure::Error> {
                 .after_help(
                     "This reads from stdin. You can terminate stdin with CTRL+D.\nIf this output \
                      is being piped, it will duplicate its input to stdout and print the \
-                     histogram to stderr instead.",
+                     histogram to stderr instead.\nIf the minimum and maximum bounds of the \
+                     histogram are provided ahead of time, the histogram will be computed in a \
+                     single pass.",
                 )
                 .arg(
                     Arg::with_name("min")

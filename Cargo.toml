@@ -1,6 +1,6 @@
 [package]
 name = "samplers"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["ming li <mingyli34@gmail.com>"]
 description = "Sample from distributions and calculate summary statistics from the command line."
 license = "MIT"
